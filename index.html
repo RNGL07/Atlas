@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ATLAS — ORION-1</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  * { box-sizing: border-box; }
+  body { margin:0; background:#05070A; font-family:'IBM Plex Sans',system-ui,sans-serif; }
+  .mono { font-family:'IBM Plex Mono',ui-monospace,monospace; }
+  .root { --bg-0:#0A0E12; --bg-1:#12181F; --bg-2:#182028; --line:#232B34; --line-strong:#2E3841;
+    --cyan:#33D1C9; --amber:#F5A623; --green:#4ADE80; --red:#F0475B;
+    --txt:#E7ECEF; --txt-2:#8A96A3; --txt-3:#5A6572;
+    background:var(--bg-0); color:var(--txt); max-width:960px; margin:0 auto;
+    min-height:100vh; display:flex; flex-direction:column; }
+  header { padding:16px 20px; border-bottom:0.5px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+  header .title { font-size:14px; font-weight:500; }
+  header .sub { font-size:11px; color:var(--txt-3); margin-top:2px; }
+  .status-dot { width:6px; height:6px; border-radius:50%; background:var(--green); display:inline-block; margin-right:6px; }
+  .status-dot.down { background:var(--red); }
+  .tabs { display:flex; gap:2px; padding:0 20px; border-bottom:0.5px solid var(--line); background:var(--bg-1); }
+  .tab-btn { background:transparent; border:none; color:var(--txt-3); font-size:12px; padding:10px 12px; cursor:pointer; font-family:inherit; border-bottom:2px solid transparent; }
+  .tab-btn.active { color:var(--cyan); border-bottom-color:var(--cyan); }
+  .panel { display:none; flex:1; padding:18px 20px; overflow-y:auto; }
+  .panel.active { display:flex; flex-direction:column; }
+  .log { flex:1; display:flex; flex-direction:column; gap:10px; min-height:200px; }
+  .msg { max-width:80%; font-size:13px; line-height:1.55; padding:9px 12px; border-radius:10px; white-space:pre-wrap; }
+  .msg.user { align-self:flex-end; background:var(--bg-2); border:0.5px solid var(--line-strong); }
+  .msg.agent { align-self:flex-start; background:var(--bg-1); border:0.5px solid var(--line); }
+  .msg.clarify { border-color:var(--amber); }
+  .msg.mismatch { border-color:var(--red); }
+  .msg.error { border-color:var(--red); color:var(--red); }
+  .input-row { padding:12px 0 0; display:flex; gap:8px; }
+  .input-row input { flex:1; background:var(--bg-1); border:0.5px solid var(--line-strong); color:var(--txt); font-size:13px; padding:9px 11px; border-radius:7px; font-family:inherit; }
+  .input-row input:focus { outline:none; border-color:var(--cyan); }
+  button.primary { background:var(--cyan); color:#062421; border:none; font-size:13px; font-weight:500; padding:9px 14px; border-radius:7px; cursor:pointer; font-family:inherit; }
+  .suggest-row { padding:10px 0; display:flex; gap:6px; flex-wrap:wrap; }
+  .suggest-chip { font-size:11px; color:var(--txt-2); border:0.5px solid var(--line); padding:4px 9px; border-radius:12px; cursor:pointer; background:transparent; font-family:inherit; }
+  .suggest-chip:hover { border-color:var(--cyan); color:var(--cyan); }
+  label.f-label { font-size:11px; color:var(--txt-2); display:block; margin:10px 0 4px; }
+  select, textarea, input[type=text] { width:100%; background:var(--bg-1); border:0.5px solid var(--line-strong); color:var(--txt); font-size:13px; padding:8px 10px; border-radius:7px; font-family:inherit; }
+  textarea { resize:vertical; min-height:70px; }
+  .result-card { background:var(--bg-1); border:0.5px solid var(--line); border-radius:8px; padding:10px 12px; margin-top:12px; font-size:12px; }
+  .hop { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:0.5px solid var(--line); }
+  .hop:last-child { border-bottom:none; }
+  .pill { font-size:10px; padding:2px 7px; border-radius:10px; font-family:'IBM Plex Mono',monospace; }
+  .pill.ok { background:rgba(74,222,128,0.12); color:var(--green); }
+  .pill.no { background:rgba(240,71,91,0.12); color:var(--red); }
+  .pill.pending { background:rgba(245,166,35,0.12); color:var(--amber); }
+  .note { font-size:11px; color:var(--txt-3); margin-top:10px; line-height:1.6; border-top:0.5px solid var(--line); padding-top:10px; }
+  .file-row { display:flex; align-items:center; gap:8px; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="root">
+  <header>
+    <div>
+      <div class="title"><span class="status-dot" id="status-dot"></span>ATLAS — ORION-1</div>
+      <div class="sub" id="api-status">checking API…</div>
+    </div>
+  </header>
+  <div class="tabs" id="tabs"></div>
+
+  <div class="panel active" id="panel-trace">
+    <div class="log" id="log"></div>
+    <div class="suggest-row" id="suggest"></div>
+    <div class="input-row">
+      <input id="question" type="text" placeholder="Ask about a fault, address, or the routing queue" />
+      <button class="primary" id="ask-btn">Ask</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-incident">
+    <label class="f-label">Fault code</label>
+    <select id="inc-fault"><option value="403">403 — ST40 Completion Sequence Mismatch</option><option value="453">453 — ST45 Completion Sequence Mismatch</option><option value="303">303 — ST30 Sequence Mismatch</option><option value="306">306 — Routing Queue Not Advancing</option><option value="301">301 — Vision Communication Fault</option><option value="501">501 — PIS Communication Fault</option></select>
+    <label class="f-label">Symptom</label>
+    <textarea id="inc-symptom" placeholder="e.g. ST40 routing record won't clear"></textarea>
+    <label class="f-label">Root cause (optional)</label>
+    <textarea id="inc-cause"></textarea>
+    <label class="f-label"><input type="checkbox" id="inc-confirmed"/> Confirmed root cause</label>
+    <button class="primary" id="inc-submit" style="align-self:flex-start;margin-top:8px">Log incident</button>
+    <div id="inc-result"></div>
+  </div>
+
+  <div class="panel" id="panel-upload">
+    <label class="f-label">File</label>
+    <div class="file-row"><input type="file" id="up-file" /></div>
+    <label class="f-label">Line</label>
+    <select id="up-line"><option value="ORION-1">ORION-1</option><option value="NOVA-2">NOVA-2</option></select>
+    <label class="f-label">Station (optional for layouts)</label>
+    <select id="up-station"><option value="">— none —</option><option>ST10</option><option>ST20</option><option>ST30</option><option>ST40</option><option>ST45</option><option>PIS-1</option><option>VISION-1</option></select>
+    <label class="f-label">Document kind</label>
+    <select id="up-kind"><option value="">— choose —</option><option value="schematic">schematic</option><option value="plc_program">plc_program</option><option value="manual">manual</option><option value="layout">layout</option><option value="photo">photo</option><option value="other">other</option></select>
+    <div id="up-flow-wrap" style="display:none"><label class="f-label">Flow of operation</label><input type="text" id="up-flow" placeholder="ST10 -> ST20 -> ST30" /></div>
+    <button class="primary" id="up-submit" style="align-self:flex-start;margin-top:10px">Upload</button>
+    <div id="up-result"></div>
+    <div class="note">Real PDF text extraction and real OCR run server-side here — this hits the actual API, not a mock.</div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const statusDot = document.getElementById('status-dot');
+const apiStatus = document.getElementById('api-status');
+
+fetch(API + '/lines/ORION-1').then(r => {
+  if (r.ok) { apiStatus.textContent = 'API connected · ' + API; }
+  else { throw new Error('bad status'); }
+}).catch(() => {
+  statusDot.classList.add('down');
+  apiStatus.textContent = 'API unreachable — check the backend is running';
+});
+
+const TABS = [['trace','Trace'],['incident','Log incident'],['upload','Upload doc']];
+const tabsEl = document.getElementById('tabs');
+TABS.forEach(([id, label], i) => {
+  const b = document.createElement('button');
+  b.className = 'tab-btn' + (i===0?' active':'');
+  b.textContent = label;
+  b.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('panel-' + id).classList.add('active');
+  };
+  tabsEl.appendChild(b);
+});
+
+const log = document.getElementById('log');
+function addMsg(text, cls) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function ask(question) {
+  if (!question.trim()) return;
+  addMsg(question, 'user');
+  document.getElementById('question').value = '';
+  try {
+    const res = await fetch(API + '/ask', {
+      method: 'POST',
+      headers: {'Content-Type':'application/x-www-form-urlencoded'},
+      body: 'question=' + encodeURIComponent(question)
+    });
+    if (!res.ok) throw new Error('API returned ' + res.status);
+    const data = await res.json();
+    addMsg(data.answer, 'agent');
+  } catch (e) {
+    addMsg('Could not reach the API: ' + e.message, 'error');
+  }
+}
+document.getElementById('ask-btn').onclick = () => ask(document.getElementById('question').value);
+document.getElementById('question').addEventListener('keydown', e => { if (e.key === 'Enter') ask(e.target.value); });
+
+['Why is fault 403 happening at ST40?', "What's the current routing priority queue?", 'What writes to D2311?', 'Why is fault 403 happening?'].forEach(s => {
+  const b = document.createElement('button');
+  b.className = 'suggest-chip'; b.textContent = s;
+  b.onclick = () => ask(s);
+  document.getElementById('suggest').appendChild(b);
+});
+
+addMsg('Connected to the live ATLAS API. Ask about a fault, address, or the routing queue.', 'agent');
+
+document.getElementById('inc-submit').onclick = async () => {
+  const symptom = document.getElementById('inc-symptom').value.trim();
+  if (!symptom) { alert('Enter a symptom first.'); return; }
+  const body = new URLSearchParams({
+    fault_code: document.getElementById('inc-fault').value,
+    symptom: symptom,
+    root_cause: document.getElementById('inc-cause').value.trim(),
+    confirmed: document.getElementById('inc-confirmed').checked,
+  });
+  try {
+    const res = await fetch(API + '/incidents', { method:'POST', body });
+    if (!res.ok) throw new Error('API returned ' + res.status);
+    const data = await res.json();
+    document.getElementById('inc-result').innerHTML = '<div class="result-card">Logged: <span class="pill ' + (data.confirmed?'ok':'pending') + '">' + (data.confirmed?'CONFIRMED':'UNCONFIRMED') + '</span> ' + data.symptom + '</div>';
+    document.getElementById('inc-symptom').value = '';
+    document.getElementById('inc-cause').value = '';
+  } catch (e) {
+    document.getElementById('inc-result').innerHTML = '<div class="result-card" style="color:var(--red)">Error: ' + e.message + '</div>';
+  }
+};
+
+document.getElementById('up-kind').addEventListener('change', function() {
+  document.getElementById('up-flow-wrap').style.display = this.value === 'layout' ? 'block' : 'none';
+});
+
+document.getElementById('up-submit').onclick = async () => {
+  const fileInput = document.getElementById('up-file');
+  if (!fileInput.files.length) { alert('Choose a file first.'); return; }
+  const file = fileInput.files[0];
+  const ext = file.name.split('.').pop().toLowerCase();
+  const docType = ext === 'pdf' ? 'pdf' : ['png','jpg','jpeg'].includes(ext) ? 'image' : 'text';
+  const form = new FormData();
+  form.append('file', file);
+  form.append('doc_type', docType);
+  form.append('line_code', document.getElementById('up-line').value);
+  const station = document.getElementById('up-station').value;
+  if (station) form.append('station_code', station);
+  const kind = document.getElementById('up-kind').value;
+  if (kind) form.append('document_kind', kind);
+  const flow = document.getElementById('up-flow').value.trim();
+  if (flow) form.append('flow_of_operation', flow);
+
+  try {
+    const res = await fetch(API + '/upload', { method:'POST', body: form });
+    if (!res.ok) throw new Error('API returned ' + res.status);
+    const data = await res.json();
+    let html = '<div class="result-card"><span class="pill ' + (data.status==='confirmed'?'ok':'pending') + '">' + data.status.toUpperCase() + '</span>';
+    if (data.pending_questions && data.pending_questions.length) {
+      html += '<div style="margin-top:8px;color:var(--amber)">Outstanding questions:</div>';
+      data.pending_questions.forEach(q => html += '<div>&bull; ' + q + '</div>');
+    }
+    html += '<div style="margin-top:8px;color:var(--txt-2)">Extraction: ' + data.extraction_method + ' (' + data.extracted_text_length + ' chars)</div>';
+    html += '<div style="color:var(--txt-2)">Known matches: ' + (data.known_address_matches.length ? data.known_address_matches.join(', ') : 'none') + '</div>';
+    if (data.flow_consistency_check) {
+      html += '<div style="margin-top:8px">' + data.flow_consistency_check.summary + '</div>';
+    }
+    html += '</div>';
+    document.getElementById('up-result').innerHTML = html;
+  } catch (e) {
+    document.getElementById('up-result').innerHTML = '<div class="result-card" style="color:var(--red)">Error: ' + e.message + '</div>';
+  }
+};
+</script>
+</body>
+</html>
